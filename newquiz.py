@@ -4,6 +4,7 @@ import pandas as pd
 import time
 import io
 import os
+import glob
 import re
 import base64
 from datetime import datetime, timedelta, timezone
@@ -19,7 +20,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 # 1. PAGE CONFIGURATION & STYLING
 # ==========================================
 st.set_page_config(
-    page_title="ABIC Renukoot - Academic & Quiz Portal",
+    page_title="ABIC Renukoot - Comprehensive Portal",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -38,7 +39,7 @@ st.markdown("""
     }
     .school-header h1 {
         margin: 0;
-        font-size: 1.9rem !important;
+        font-size: 1.85rem !important;
         font-weight: 800;
         color: #ffffff !important;
     }
@@ -59,7 +60,7 @@ st.markdown("""
             padding-left: 0.8rem !important;
             padding-right: 0.8rem !important;
         }
-        .school-header h1 { font-size: 1.3rem !important; }
+        .school-header h1 { font-size: 1.25rem !important; }
         .school-header h3 { font-size: 0.95rem !important; }
         .stButton>button {
             width: 100% !important;
@@ -75,10 +76,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
+SCHOOL_NAME_HEADER = "ADITYA BIRLA INTERMEDIATE COLLEGE, RENUKOOT, SONEBHADRA (UP)"
+
+st.markdown(f"""
 <div class="school-header">
-    <h1>ADITYA BIRLA INTERMEDIATE COLLEGE, RENUKOOT</h1>
-    <h3>⚡ Physics Subject Exam, Academic & Portfolio Portal ⚡</h3>
+    <h1>{SCHOOL_NAME_HEADER}</h1>
+    <h3>⚡ Physics Exam, Academic Analytics & UP Board Portfolio Portal ⚡</h3>
     <p>Mentor & In-charge: <b>Shashank Verma, TGT (Physics)</b></p>
 </div>
 """, unsafe_allow_html=True)
@@ -117,6 +120,36 @@ def safe_b64_decode(data_str):
     except Exception:
         return None
 
+def convert_gdrive_link(url):
+    if not url or not isinstance(url, str):
+        return ""
+    url = url.strip()
+    match1 = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+    if match1:
+        return f"https://lh3.googleusercontent.com/d/{match1.group(1)}"
+    match2 = re.search(r'id=([a-zA-Z0-9_-]+)', url)
+    if match2:
+        return f"https://lh3.googleusercontent.com/d/{match2.group(1)}"
+    return url
+
+# 14 Official School Activities (UP Board Calendar 2026-27)
+DEFAULT_ACTIVITIES = [
+    {"sno": 1, "date": "27.08.2026", "name": "Tata Building India School Essay Competition", "cat": "साहित्यिक (निबंध)", "desc": "2047 तक भारत को विश्व का सबसे विकसित देश बनाने के लिए मैं यह पांच कार्य करूंगा/करूंगी", "incharge": "श्री विकास कुमार चक्रवर्ती / कक्षा अध्यापक"},
+    {"sno": 2, "date": "27.08.2026", "name": "रंगोली प्रतियोगिता", "cat": "कला एवं संस्कृति", "desc": "रंगोली निर्माण (समूह गतिविधि - प्रति समूह 4 विद्यार्थी)", "incharge": "श्रीमती साधना भरद्वाज"},
+    {"sno": 3, "date": "27.08.2026", "name": "मेहंदी प्रतियोगिता", "cat": "कला एवं संस्कृति", "desc": "मेहंदी आलेखन (रचनात्मकता, मौलिकता व बारीकी)", "incharge": "श्रीमती पूजा सिंह"},
+    {"sno": 4, "date": "20.08.2026", "name": "राखी निर्माण प्रतियोगिता", "cat": "क्राफ्ट एवं रचनात्मक कौशल", "desc": "आकर्षक व सुंदर राखी निर्माण (राखी प्रदर्शनी हेतु)", "incharge": "श्री शशिकांत सर / श्री विकास कुमार चक्रवर्ती"},
+    {"sno": 5, "date": "13.08.2026", "name": "चित्रकला प्रतियोगिता", "cat": "दृश्य कला (Drawing)", "desc": "सरदार वल्लभभाई पटेल के जीवन एवं आदर्शों पर आधारित चित्रकला", "incharge": "डॉ. संतोष कुमार तिवारी"},
+    {"sno": 6, "date": "06.08.2026", "name": "निबंध प्रतियोगिता", "cat": "साहित्यिक (निबंध)", "desc": "सरदार वल्लभभाई पटेल की 150वीं जयंती पर उनके जीवन, आदर्श व मूल्यों पर निबंध", "incharge": "डॉ. बबलू कुमार भट्ट"},
+    {"sno": 7, "date": "31.07.2026", "name": "बाल संसद (Student Council)", "cat": "नेतृत्व कौशल (Leadership)", "desc": "बाल संसद पदाधिकारियों का शपथ ग्रहण समारोह", "incharge": "विद्यालय प्रशासन / हिंडालको प्रबंधन"},
+    {"sno": 8, "date": "30.07.2026", "name": "कक्षा सज्जा एवं शैक्षणिक चार्ट प्रतियोगिता", "cat": "रचनात्मक एवं शैक्षणिक कौशल", "desc": "कक्षा कक्ष सौंदर्यीकरण एवं शिक्षण-अधिगम चार्ट निर्माण", "incharge": "कक्षा अध्यापक / श्री विकास कुमार चक्रवर्ती"},
+    {"sno": 9, "date": "23.07.2026", "name": "Elocution (भाषण प्रतियोगिता)", "cat": "साहित्यिक (मौखिक अभिव्यक्ति)", "desc": "विषय: अनुशासन का महत्व, प्रिय कवि, आतंकवाद, स्वतंत्रता दिवस, बेरोजगारी", "incharge": "श्री शशिकांत मौर्या"},
+    {"sno": 10, "date": "16.07.2026", "name": "Story Telling (कहानी लेखन)", "cat": "साहित्यिक (रचनात्मक लेखन)", "desc": "विषय: 'The Power of Honesty'", "incharge": "श्री वशिष्ठ राकेश कुमार"},
+    {"sno": 11, "date": "09.07.2026", "name": "IEP पोस्टर प्रतियोगिता", "cat": "कला एवं पर्यावरण जागरूकता", "desc": "विषय: पर्यावरण संरक्षण / सड़क सुरक्षा (चार्ट पेपर पोस्टर)", "incharge": "श्री विकास कुमार चक्रवर्ती"},
+    {"sno": 12, "date": "02.07.2026", "name": "ABG Group Orchestra प्रतियोगिता", "cat": "प्रदर्शन कला (संगीत)", "desc": "वाद्य यंत्र / संगीत प्रदर्शन (ऑर्केस्ट्रा)", "incharge": "श्रीमती ज्योति मिश्रा"},
+    {"sno": 13, "date": "02.07.2026", "name": "लेख प्रतियोगिता (Article Writing)", "cat": "सामाजिक जागरूकता / वैचारिक लेखन", "desc": "विषय: 'जनगणना का महत्व तथा आवश्यकता'", "incharge": "कक्षा अध्यापक / एक्टिविटी प्रभारी"},
+    {"sno": 14, "date": "14.05.2026", "name": "Creative Story Writing Competition", "cat": "साहित्यिक (अंग्रेजी लेखन)", "desc": "English Story Writing (Thinking & Writing Skills)", "incharge": "श्री अशोक द्विवेदी"}
+]
+
 # Smart Answer Matcher
 def is_answer_correct(selected, correct, opt_a, opt_b, opt_c, opt_d):
     if not selected:
@@ -154,36 +187,95 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
+    # 1. Master Students Table (Integrated Profile)
     c.execute('''
         CREATE TABLE IF NOT EXISTS master_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            roll_no TEXT,
             student_name TEXT NOT NULL,
+            student_name_hindi TEXT DEFAULT '',
             sr_no TEXT NOT NULL,
             normalized_name TEXT UNIQUE NOT NULL,
-            roll_no TEXT DEFAULT '',
             target_class TEXT DEFAULT 'Class 12',
-            father_name TEXT DEFAULT '',
-            mother_name TEXT DEFAULT '',
+            roll_no_10th TEXT DEFAULT '',
+            pen_no TEXT DEFAULT '',
             dob TEXT DEFAULT '',
+            father_name TEXT DEFAULT '',
+            father_name_hindi TEXT DEFAULT '',
+            mother_name TEXT DEFAULT '',
+            mother_name_hindi TEXT DEFAULT '',
+            gender TEXT DEFAULT '',
+            category TEXT DEFAULT '',
             mob_no TEXT DEFAULT '',
+            email_id TEXT DEFAULT '',
             address TEXT DEFAULT '',
+            occupation TEXT DEFAULT '-',
+            ecode TEXT DEFAULT '-',
+            dept TEXT DEFAULT '-',
+            caste TEXT DEFAULT '-',
+            religion TEXT DEFAULT '-',
             attendance_pct TEXT DEFAULT '82.5',
             attendance_present TEXT DEFAULT '72',
             attendance_total TEXT DEFAULT '87',
-            test_total TEXT DEFAULT '-',
-            test_pct TEXT DEFAULT '-',
+            test_hindi TEXT DEFAULT '',
+            test_eng TEXT DEFAULT '',
+            test_maths TEXT DEFAULT '',
+            test_phy TEXT DEFAULT '',
+            test_che TEXT DEFAULT '',
+            test_total TEXT DEFAULT '',
+            test_pct TEXT DEFAULT '',
             short_term_goal TEXT DEFAULT '',
             long_term_goal TEXT DEFAULT '',
+            academic_goals TEXT DEFAULT '',
+            strengths_weaknesses TEXT DEFAULT '',
             photo_b64 TEXT DEFAULT '',
             photo_url TEXT DEFAULT ''
         )
     ''')
 
-    try:
-        c.execute("ALTER TABLE master_students ADD COLUMN target_class TEXT DEFAULT 'Class 12'")
-    except sqlite3.OperationalError:
-        pass
+    # Safe Schema Migrations
+    c.execute("PRAGMA table_info(master_students)")
+    cols = [info[1] for info in c.fetchall()]
+    new_cols = [
+        ("target_class", "TEXT DEFAULT 'Class 12'"),
+        ("student_name_hindi", "TEXT DEFAULT ''"),
+        ("roll_no_10th", "TEXT DEFAULT ''"),
+        ("pen_no", "TEXT DEFAULT ''"),
+        ("father_name_hindi", "TEXT DEFAULT ''"),
+        ("mother_name", "TEXT DEFAULT ''"),
+        ("mother_name_hindi", "TEXT DEFAULT ''"),
+        ("gender", "TEXT DEFAULT ''"),
+        ("category", "TEXT DEFAULT ''"),
+        ("mob_no", "TEXT DEFAULT ''"),
+        ("email_id", "TEXT DEFAULT ''"),
+        ("address", "TEXT DEFAULT ''"),
+        ("occupation", "TEXT DEFAULT '-'"),
+        ("ecode", "TEXT DEFAULT '-'"),
+        ("dept", "TEXT DEFAULT '-'"),
+        ("caste", "TEXT DEFAULT '-'"),
+        ("religion", "TEXT DEFAULT '-'"),
+        ("attendance_present", "TEXT DEFAULT '72'"),
+        ("attendance_total", "TEXT DEFAULT '87'"),
+        ("attendance_pct", "TEXT DEFAULT '82.5'"),
+        ("test_hindi", "TEXT DEFAULT ''"),
+        ("test_eng", "TEXT DEFAULT ''"),
+        ("test_maths", "TEXT DEFAULT ''"),
+        ("test_phy", "TEXT DEFAULT ''"),
+        ("test_che", "TEXT DEFAULT ''"),
+        ("test_total", "TEXT DEFAULT ''"),
+        ("test_pct", "TEXT DEFAULT ''"),
+        ("short_term_goal", "TEXT DEFAULT ''"),
+        ("long_term_goal", "TEXT DEFAULT ''"),
+        ("academic_goals", "TEXT DEFAULT ''"),
+        ("strengths_weaknesses", "TEXT DEFAULT ''"),
+        ("photo_b64", "TEXT DEFAULT ''"),
+        ("photo_url", "TEXT DEFAULT ''")
+    ]
+    for col_name, col_type in new_cols:
+        if col_name not in cols:
+            c.execute(f"ALTER TABLE master_students ADD COLUMN {col_name} {col_type}")
 
+    # 2. Quizzes Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -197,6 +289,7 @@ def init_db():
         )
     ''')
 
+    # 3. Questions Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,6 +303,7 @@ def init_db():
         )
     ''')
 
+    # 4. Submissions Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -225,6 +319,7 @@ def init_db():
         )
     ''')
 
+    # 5. Question Responses Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,6 +335,7 @@ def init_db():
         )
     ''')
 
+    # 6. Persistent Attempt Timers
     c.execute('''
         CREATE TABLE IF NOT EXISTS quiz_attempts (
             quiz_id INTEGER NOT NULL,
@@ -249,6 +345,25 @@ def init_db():
         )
     ''')
 
+    # 7. Portfolio Activities Entries
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS portfolio_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            roll_no TEXT,
+            activity_name TEXT NOT NULL,
+            category TEXT,
+            activity_date TEXT,
+            student_description TEXT,
+            student_reflection TEXT,
+            evidence_link TEXT,
+            marks_awarded INTEGER DEFAULT 5,
+            teacher_remarks TEXT DEFAULT 'उत्कृष्ट सहभागिता',
+            submitted_on TEXT,
+            UNIQUE(roll_no, activity_name) ON CONFLICT REPLACE
+        )
+    ''')
+
+    # Default Quizzes
     c.execute("SELECT COUNT(*) FROM quizzes")
     if c.fetchone()[0] == 0:
         now_time = get_ist_now() - timedelta(hours=1)
@@ -263,6 +378,7 @@ def init_db():
             VALUES (?, ?, ?, ?, ?, ?, 1)
         ''', ("Class 12", "Electrostatics & Magnetism", "Class 12 - Physics Exam", 20, s_date, e_date))
 
+    # Auto load initial students if available
     for s_path in [STUDENTS_FILE, "students.csv"]:
         if os.path.exists(s_path):
             try:
@@ -293,6 +409,7 @@ def init_db():
 
 init_db()
 
+# DB Helpers
 def get_all_quizzes():
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM quizzes", conn)
@@ -320,162 +437,246 @@ def get_or_set_attempt_start(quiz_id, student_norm_name):
     return start_epoch
 
 # ==========================================
-# 3. PDF MERIT LIST GENERATOR (Admin Only)
+# 3. 2-PAGE UP BOARD PORTFOLIO CARD HTML
 # ==========================================
-def generate_merit_pdf(subs_df, quiz_info):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-    styles = getSampleStyleSheet()
+def generate_upboard_card(student, entries_df):
+    s_photo = student.get("photo_b64", "")
+    p_url = student.get("photo_url", "")
     
-    title_style = ParagraphStyle('SchoolTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=1, textColor=colors.HexColor("#1e3c72"))
-    subtitle_style = ParagraphStyle('SubTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=13, leading=16, alignment=1, textColor=colors.HexColor("#333333"))
-    meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontName='Helvetica', fontSize=10, leading=14, alignment=1, textColor=colors.HexColor("#555555"))
-    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=11, alignment=1)
-    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=1)
-    
-    elements = []
-    elements.append(Paragraph("ADITYA BIRLA INTERMEDIATE COLLEGE, RENUKOOT", title_style))
-    elements.append(Paragraph("Official Examination Merit List Report", subtitle_style))
-    elements.append(Paragraph(f"<b>Exam:</b> {quiz_info.get('quiz_title', 'Exam')} | <b>Class:</b> {quiz_info.get('target_class', '')} | <b>Topic:</b> {quiz_info.get('topic', '')}", meta_style))
-    elements.append(Paragraph(f"Mentor: <b>Shashank Verma, TGT (Physics)</b> | Generated on: {get_ist_now().strftime('%d-%b-%Y %I:%M %p')}", meta_style))
-    elements.append(Spacer(1, 15))
-    
-    table_data = [
-        [Paragraph("<b>Rank</b>", cell_bold), Paragraph("<b>Student Name</b>", cell_bold), Paragraph("<b>SR No</b>", cell_bold), Paragraph("<b>Score</b>", cell_bold), Paragraph("<b>Percentage</b>", cell_bold), Paragraph("<b>Switches</b>", cell_bold), Paragraph("<b>Submitted At</b>", cell_bold)]
-    ]
-    
-    for idx, row in subs_df.iterrows():
-        rank = idx + 1
-        pct = (row['score'] / row['total_questions'] * 100) if row['total_questions'] > 0 else 0
-        rank_str = f"🥇 Rank {rank}" if rank == 1 else (f"🥈 Rank {rank}" if rank == 2 else (f"🥉 Rank {rank}" if rank == 3 else f"{rank}"))
-        table_data.append([
-            Paragraph(rank_str, cell_bold if rank <= 3 else cell_style),
-            Paragraph(str(row['student_name']), cell_style),
-            Paragraph(str(row['sr_no']), cell_style),
-            Paragraph(f"{row['score']} / {row['total_questions']}", cell_bold),
-            Paragraph(f"{pct:.1f}%", cell_style),
-            Paragraph(str(row['tab_switches']), cell_style),
-            Paragraph(str(row['submitted_at']), cell_style)
-        ])
-    
-    col_widths = [65, 130, 65, 65, 60, 50, 100]
-    t = Table(table_data, colWidths=col_widths, repeatRows=1)
-    t_style = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1e3c72")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#dcdcdc")),
-    ]
-    
-    for r_idx in range(1, len(table_data)):
-        if r_idx == 1:
-            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff9db")))
-        elif r_idx == 2:
-            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#f1f3f5")))
-        elif r_idx == 3:
-            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff4e6")))
-        elif r_idx % 2 == 0:
-            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#f8f9fa")))
-            
-    t.setStyle(TableStyle(t_style))
-    elements.append(t)
-    doc.build(elements)
-    pdf_val = buffer.getvalue()
-    buffer.close()
-    return pdf_val
+    if safe_b64_decode(s_photo):
+        photo_html = f'<img src="data:image/jpeg;base64,{s_photo}" style="width: 95px; height: 115px; object-fit: cover; border-radius: 6px; border: 2px solid #1E3A8A;"/>'
+    elif p_url:
+        photo_html = f'<img src="{p_url}" style="width: 95px; height: 115px; object-fit: cover; border-radius: 6px; border: 2px solid #1E3A8A;" onerror="this.style.display=\'none\';"/>'
+    else:
+        photo_html = '<div style="font-size: 42px;">🎓</div><div style="font-size: 11px; color: #94A3B8;">फोटो प्रतीक्षित</div>'
 
-# Anti-Cheating & Live Timer Component
-def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
-    timer_js = f"""
+    activities_rows = ""
+    if entries_df.empty:
+        for act in DEFAULT_ACTIVITIES[:5]:
+            activities_rows += f"""
+            <tr style="border-bottom: 1px solid #E2E8F0; font-size: 11.5px;">
+                <td style="padding: 6px; text-align: center;">{act['date']}</td>
+                <td style="padding: 6px; font-weight: 600; color: #1E3A8A;">{act['name']}<br><span style="font-weight: normal; color: #64748B; font-size: 10.5px;">{act['desc']}</span></td>
+                <td style="padding: 6px; text-align: center;">{act['cat']}</td>
+                <td style="padding: 6px; color: #334155;">सक्रिय प्रतिभागिता एवं उत्तम प्रदर्शन</td>
+                <td style="padding: 6px; text-align: center; font-weight: bold; color: #059669;">5/5</td>
+            </tr>
+            """
+    else:
+        for _, itm in entries_df.iterrows():
+            reflection = itm['student_reflection'] if clean_val(itm['student_reflection']) else "सक्रिय सहभागिता एवं व्यावहारिक अनुभव।"
+            desc = itm['student_description'] if clean_val(itm['student_description']) else "गतिविधि में योगदान"
+            marks = itm['marks_awarded'] if itm['marks_awarded'] else 5
+            link_badge = f'<br><a href="{itm["evidence_link"]}" target="_blank" style="font-size:11px; color:#2563EB;">🔗 फोटो लिंक</a>' if itm.get("evidence_link") else ''
+
+            activities_rows += f"""
+            <tr style="border-bottom: 1px solid #E2E8F0; font-size: 11.5px;">
+                <td style="padding: 6px; text-align: center;">{itm['activity_date']}</td>
+                <td style="padding: 6px; font-weight: 600; color: #1E3A8A;">{itm['activity_name']}<br><span style="font-weight: normal; color: #475569; font-size: 10.5px;">{desc}</span></td>
+                <td style="padding: 6px; text-align: center;">{itm['category']}</td>
+                <td style="padding: 6px; color: #0284C7; font-style: italic;">{reflection}{link_badge}</td>
+                <td style="padding: 6px; text-align: center; font-weight: bold; color: #059669;">{marks}/5</td>
+            </tr>
+            """
+
+    today_str = datetime.now().strftime('%d-%m-%Y')
+    hindi_name = f"({student.get('student_name_hindi')})" if student.get('student_name_hindi') else ""
+    short_term = student.get('short_term_goal', '').strip()
+    long_term = student.get('long_term_goal', '').strip()
+    general_goals = student.get('academic_goals', '').strip()
+
+    raw_pct = student.get('attendance_pct', '')
+    raw_pres = student.get('attendance_present', '')
+    raw_tot = student.get('attendance_total', '87')
+
+    try:
+        pct_float = float(str(raw_pct).replace('%', '').strip())
+        display_pct = f"{pct_float:.1f}%"
+    except Exception:
+        display_pct = f"{raw_pct}%" if raw_pct else "82.5%"
+
+    pct_num_match = re.findall(r'\d+\.?\d*', display_pct)
+    pct_val = float(pct_num_match[0]) if pct_num_match else 80.0
+    status_label = "✅ संतोषजनक (>=75%)" if pct_val >= 75.0 else "⚠️ ध्यान देने योग्य (<75%)"
+    status_color = "#059669" if pct_val >= 75.0 else "#DC2626"
+
+    m_hin = student.get('test_hindi', '')
+    m_eng = student.get('test_eng', '')
+    m_mat = student.get('test_maths', '')
+    m_phy = student.get('test_phy', '')
+    m_che = student.get('test_che', '')
+    m_tot = student.get('test_total', '')
+    m_pct = student.get('test_pct', '')
+
+    test_display_tot = f"{float(m_tot):.0f}" if m_tot and re.match(r'^\d+(\.\d+)?$', str(m_tot)) else (m_tot if m_tot else "-")
+    test_display_pct = f"{float(m_pct):.1f}%" if m_pct and re.match(r'^\d+(\.\d+)?$', str(m_pct)) else (f"{m_pct}%" if m_pct else "-")
+
+    if not short_term and not long_term:
+        vision_html = f"""
+        <div style="background: #F8FAFC; border-left: 4px solid #3B82F6; padding: 10px 14px; border-radius: 4px; font-size: 13px; color: #334155; line-height: 1.5;">
+            {general_goals if general_goals else "सत्र 2026-27 में बोर्ड परीक्षा में उत्कृष्ट अंक अर्जित करना तथा नियमित अध्ययन करना।"}
+        </div>
+        """
+    else:
+        st_text = short_term if short_term else "कक्षा 12वीं में 90%+ अंक अर्जित करना तथा विषयों में प्रवीणता प्राप्त करना।"
+        lt_text = long_term if long_term else "उच्च शिक्षा एवं प्रतियोगी परीक्षाओं में सफलता प्राप्त करना।"
+        vision_html = f"""
+        <div style="display: flex; gap: 12px; margin-top: 5px;">
+            <div style="flex: 1; background: #F8FAFC; border-left: 4px solid #3B82F6; padding: 8px 12px; border-radius: 4px; font-size: 12.5px; color: #1e293b;">
+                <strong style="color: #1E3A8A;">📌 अल्पकालिक लक्ष्य (Short-Term Goal 2026-27):</strong><br>{st_text}
+            </div>
+            <div style="flex: 1; background: #F8FAFC; border-left: 4px solid #059669; padding: 8px 12px; border-radius: 4px; font-size: 12.5px; color: #1e293b;">
+                <strong style="color: #059669;">🎯 दीर्घकालिक लक्ष्य (Long-Term Goal - Career):</strong><br>{lt_text}
+            </div>
+        </div>
+        """
+
+    sw = student.get('strengths_weaknesses') if student.get('strengths_weaknesses') else "ताकत: परिश्रम व अनुशासन | सुधार क्षेत्र: समय प्रबंधन।"
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Portfolio - {student.get('student_name')}</title>
     <style>
-        #sticky-timer-box {{
-            position: fixed; 
-            top: 50px; 
-            right: 20px; 
-            background: #ff4b4b; 
-            color: #ffffff; 
-            padding: 10px 18px; 
-            border-radius: 8px; 
-            font-family: monospace; 
-            font-size: 18px; 
-            font-weight: bold; 
-            z-index: 999999;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-            border: 2px solid white;
-        }}
-        @media only screen and (max-width: 600px) {{
-            #sticky-timer-box {{
-                top: 40px;
-                right: 8px;
-                padding: 6px 12px;
-                font-size: 14px;
-            }}
-        }}
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; padding: 15px; color: #1e293b; }}
+        .page {{ max-width: 850px; margin: 0 auto 25px auto; background: #ffffff; border: 2px solid #1E3A8A; border-radius: 10px; padding: 25px; box-shadow: 0 4px 10px rgba(0,0,0,0.06); }}
+        @media print {{ body {{ background: none; padding: 0; }} .page {{ box-shadow: none; margin: 0; border: 2px solid #000; page-break-after: always; }} }}
     </style>
-    <div id="sticky-timer-box">
-        ⏳ <span id="timer-display">Loading...</span> | ⚠️ <span id="switch-count">0</span>
+</head>
+<body>
+    <!-- PAGE 1 -->
+    <div class="page">
+        <div style="text-align: center; border-bottom: 2px solid #E2E8F0; padding-bottom: 12px; margin-bottom: 18px;">
+            <h2 style="margin: 0; color: #1E3A8A; font-size: 20px; text-transform: uppercase; letter-spacing: 1px;">{SCHOOL_NAME_HEADER}</h2>
+            <h3 style="margin: 4px 0 0 0; color: #059669; font-size: 16px;">छात्र पोर्टफोलियो एवं सतत आंतरिक मूल्यांकन रिकॉर्ड</h3>
+            <div style="font-size: 13px; color: #475569; margin-top: 4px;">सत्र: 2026 - 2027 | कक्षा: {student.get('target_class', 'Class 12')}</div>
+            <div style="display: inline-block; background: #1E3A8A; color: white; padding: 3px 14px; border-radius: 12px; font-size: 11px; margin-top: 6px; font-weight: 600;">भाग 1 : व्यक्तिगत विवरण एवं स्व-मूल्यांकन</div>
+        </div>
+
+        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+            <table style="width: 72%; border-collapse: collapse; font-size: 13px;">
+                <tr style="background: #F1F5F9;"><td style="padding: 6px; font-weight: bold; width: 35%;">छात्र/छात्रा का नाम:</td><td style="padding: 6px; color: #1E3A8A; font-weight: bold; font-size: 14px;">{student.get('student_name')} {hindi_name}</td></tr>
+                <tr><td style="padding: 6px; font-weight: bold;">अनुक्रमांक (Roll No.):</td><td style="padding: 6px; font-weight: bold;">{student.get('roll_no')}</td></tr>
+                <tr style="background: #F1F5F9;"><td style="padding: 6px; font-weight: bold;">S.R. No. / PEN:</td><td style="padding: 6px;">{student.get('sr_no')} / {student.get('pen_no')}</td></tr>
+                <tr><td style="padding: 6px; font-weight: bold;">पिता का नाम:</td><td style="padding: 6px;">{student.get('father_name')}</td></tr>
+                <tr style="background: #F1F5F9;"><td style="padding: 6px; font-weight: bold;">माता का नाम:</td><td style="padding: 6px;">{student.get('mother_name')}</td></tr>
+                <tr><td style="padding: 6px; font-weight: bold;">जन्म तिथि (D.O.B.):</td><td style="padding: 6px;">{student.get('dob')}</td></tr>
+                <tr style="background: #F1F5F9;"><td style="padding: 6px; font-weight: bold;">संपर्क सूत्र (Mobile):</td><td style="padding: 6px;">{student.get('mob_no')}</td></tr>
+                <tr><td style="padding: 6px; font-weight: bold;">निवास पता:</td><td style="padding: 6px;">{student.get('address')}</td></tr>
+            </table>
+            <div style="width: 28%; border: 2px dashed #94A3B8; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #F8FAFC; padding: 10px; text-align: center;">
+                {photo_html}
+                <div style="font-weight: bold; font-size: 13px; color: #1E3A8A; margin-top: 6px;">{student.get('student_name')}</div>
+                <div style="font-size: 11px; color: #64748B;">कक्षा: {student.get('target_class', 'Class 12')}</div>
+                <div style="font-size: 10px; color: #059669; margin-top: 4px; border: 1px solid #059669; padding: 2px 6px; border-radius: 8px;">सत्यापित विद्यार्थी</div>
+            </div>
+        </div>
+
+        <div style="background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; padding: 10px 14px; margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 13px; font-weight: bold; color: #1E3A8A;">📊 सत्र 2026-27 उपस्थिति विवरण (Official Attendance Record):</div>
+                <div style="font-size: 12.5px; font-weight: bold; color: {status_color};">{status_label}</div>
+            </div>
+            <div style="display: flex; gap: 20px; margin-top: 6px; font-size: 12.5px; color: #334155;">
+                <div><strong>कुल कार्य दिवस:</strong> {raw_tot}</div>
+                <div><strong>उपस्थित दिवस:</strong> {raw_pres if raw_pres else 'N/A'}</div>
+                <div><strong>वार्षिक उपस्थिति %:</strong> <span style="font-weight: bold; color: {status_color}; font-size: 13.5px;">{display_pct}</span></div>
+            </div>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <div style="color: #1E3A8A; font-weight: bold; font-size: 14px; margin-bottom: 6px;">🎯 शैक्षणिक लक्ष्य एवं संकल्प (Academic Vision & Career Goals):</div>
+            {vision_html}
+        </div>
+
+        <div style="margin-top: 15px;">
+            <div style="color: #1E3A8A; font-weight: bold; font-size: 14px; margin-bottom: 6px;">💡 क्षमताएं एवं सुधार क्षेत्र (Self-Reflection):</div>
+            <div style="background: #F8FAFC; border-left: 4px solid #10B981; padding: 10px 14px; border-radius: 4px; font-size: 13px; color: #334155; line-height: 1.5;">{sw}</div>
+        </div>
     </div>
 
-    <script>
-    let timeLeft = {int(remaining_seconds)};
-    let display = document.getElementById('timer-display');
-    let switchCountElem = document.getElementById('switch-count');
-    let tabSwitches = sessionStorage.getItem('tab_switches_{quiz_id}_{student_name}') || 0;
-    switchCountElem.innerHTML = tabSwitches;
+    <!-- PAGE 2 -->
+    <div class="page">
+        <div style="text-align: center; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px; margin-bottom: 12px;">
+            <h2 style="margin: 0; color: #1E3A8A; font-size: 18px; text-transform: uppercase;">{SCHOOL_NAME_HEADER}</h2>
+            <h3 style="margin: 3px 0 0 0; color: #059669; font-size: 15px;">मासिक परीक्षा मूल्यांकन एवं सह-पाठ्यचर्या गतिविधि प्रपत्र</h3>
+            <div style="display: inline-block; background: #059669; color: white; padding: 2px 14px; border-radius: 12px; font-size: 11px; margin-top: 4px; font-weight: 600;">भाग 2 : मासिक परीक्षा परिणाम, गतिविधियां व रूब्रिक्स</div>
+        </div>
 
-    function triggerAutoSubmit() {{
-        let buttons = window.parent.document.querySelectorAll('button');
-        buttons.forEach(btn => {{
-            if (btn.innerText.includes("Submit Final Answers")) {{ btn.click(); }}
-        }});
-    }}
+        <div style="margin-bottom: 14px;">
+            <div style="color: #1E3A8A; font-weight: bold; font-size: 13px; margin-bottom: 5px;">📝 मासिक यूनिट टेस्ट मूल्यांकन (Monthly Unit Test Record - Max: 100):</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; border: 1px solid #CBD5E1; text-align: center;">
+                <thead>
+                    <tr style="background: #1E3A8A; color: white;">
+                        <th style="padding: 6px;">हिन्दी (20)</th>
+                        <th style="padding: 6px;">अंग्रेजी (20)</th>
+                        <th style="padding: 6px;">गणित (20)</th>
+                        <th style="padding: 6px;">भौतिक (20)</th>
+                        <th style="padding: 6px;">रसायन (20)</th>
+                        <th style="padding: 6px; background: #0F172A;">कुल प्राप्तांक (100)</th>
+                        <th style="padding: 6px; background: #059669;">प्रतिशत (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="background: #F8FAFC; font-weight: bold; color: #1E293B;">
+                        <td style="padding: 6px; border: 1px solid #CBD5E1;">{m_hin if m_hin else '-'}</td>
+                        <td style="padding: 6px; border: 1px solid #CBD5E1;">{m_eng if m_eng else '-'}</td>
+                        <td style="padding: 6px; border: 1px solid #CBD5E1;">{m_mat if m_mat else '-'}</td>
+                        <td style="padding: 6px; border: 1px solid #CBD5E1;">{m_phy if m_phy else '-'}</td>
+                        <td style="padding: 6px; border: 1px solid #CBD5E1;">{m_che if m_che else '-'}</td>
+                        <td style="padding: 6px; border: 1px solid #CBD5E1; color: #1E3A8A; font-size: 12.5px;">{test_display_tot}</td>
+                        <td style="padding: 6px; border: 1px solid #CBD5E1; color: #059669; font-size: 12.5px;">{test_display_pct}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
 
-    function updateTimer() {{
-        if (timeLeft <= 0) {{
-            display.innerHTML = "TIME UP!";
-            triggerAutoSubmit();
-            return;
-        }}
-        let mins = Math.floor(timeLeft / 60);
-        let secs = timeLeft % 60;
-        display.innerHTML = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
-        timeLeft--;
-    }}
+        <div style="margin-bottom: 12px;">
+            <div style="color: #1E3A8A; font-weight: bold; font-size: 13px; margin-bottom: 5px;">📋 प्रमुख सह-पाठ्यचर्या गतिविधियां एवं प्रतियोगिताएं:</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; border: 1px solid #CBD5E1;">
+                <thead>
+                    <tr style="background: #334155; color: white; text-align: left;">
+                        <th style="padding: 6px; width: 12%; text-align: center;">तिथि</th>
+                        <th style="padding: 6px; width: 38%;">गतिविधि / प्रतियोगिता</th>
+                        <th style="padding: 6px; width: 18%; text-align: center;">श्रेणी</th>
+                        <th style="padding: 6px; width: 22%;">सीख / प्रस्तुति</th>
+                        <th style="padding: 6px; width: 10%; text-align: center;">अंक</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {activities_rows}
+                </tbody>
+            </table>
+        </div>
 
-    updateTimer();
-    setInterval(updateTimer, 1000);
+        <div style="border: 1px solid #CBD5E1; border-radius: 6px; padding: 10px; background: #F8FAFC; margin-top: 15px;">
+            <div style="margin: 0 0 6px 0; color: #1E3A8A; font-weight: bold; font-size: 12.5px;">📝 आंतरिक मूल्यांकन रूब्रिक्स (UP Board Marking Criteria - पूर्णांक: 20)</div>
+            <div style="display: flex; gap: 8px; font-size: 11.5px; text-align: center;">
+                <div style="flex: 1; background: white; padding: 5px; border: 1px solid #CBD5E1; border-radius: 4px;"><strong>1. नियमितता</strong><br>(5 M)</div>
+                <div style="flex: 1; background: white; padding: 5px; border: 1px solid #CBD5E1; border-radius: 4px;"><strong>2. मौलिकता</strong><br>(5 M)</div>
+                <div style="flex: 1; background: white; padding: 5px; border: 1px solid #CBD5E1; border-radius: 4px;"><strong>3. रचनात्मकता</strong><br>(5 M)</div>
+                <div style="flex: 1; background: white; padding: 5px; border: 1px solid #CBD5E1; border-radius: 4px;"><strong>4. आचरण</strong><br>(5 M)</div>
+            </div>
 
-    window.addEventListener('blur', function() {{
-        tabSwitches++;
-        sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
-        switchCountElem.innerHTML = tabSwitches;
-        alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detect hua hai! Bar-bar tab badalne par test auto-submit ho jayega.');
-        if (tabSwitches >= 3) {{
-            alert('❌ Maximum limit reached. Test auto-submit ho raha hai.');
-            triggerAutoSubmit();
-        }}
-    }});
-
-    document.addEventListener('contextmenu', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('copy', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('cut', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('paste', function(e) {{ e.preventDefault(); }});
-    </script>
-    """
-    components.html(timer_js, height=65)
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 25px; padding-top: 8px; border-top: 1px dashed #94A3B8; font-size: 11.5px;">
+                <div><strong>विद्यार्थी के हस्ताक्षर:</strong> _____________________<br><span style="color:#64748B;">दिनांक: {today_str}</span></div>
+                <div style="text-align: right;"><strong>कक्षा अध्यापक / प्रभारी हस्ताक्षर:</strong> _____________________<br><span style="color:#64748B;">कक्षा अध्यापक</span></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
 
 # ==========================================
 # 4. SIDEBAR NAVIGATION
 # ==========================================
-st.sidebar.title("🧭 Navigation")
-selected_portal = st.sidebar.radio("Select Portal:", ["🎓 Student Examination & Academic Portal", "⚙️ Teacher / Admin Control Center"])
+st.sidebar.title("🧭 Portal Navigation")
+selected_portal = st.sidebar.radio("Select Access:", ["🎓 Student Individual Portal", "⚙️ Teacher / Admin Control Center"])
 st.sidebar.divider()
 
 # ==========================================
-# 5. ADMIN CONTROL PANEL (TEACHER ONLY)
+# 5. ADMIN CONTROL CENTER (Teacher Only)
 # ==========================================
 if selected_portal == "⚙️ Teacher / Admin Control Center":
     if "admin_authenticated" not in st.session_state:
@@ -512,16 +713,18 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
     admin_tab = st.selectbox("Select Management Section:", [
         "📚 Create & Manage Quizzes (Class 11 & 12 Control)", 
         "👥 Master Student Directory, Attendance & Tests", 
+        "📥 Google Form Sync (All-in-One Responses)",
         "📝 Question Bank (Excel/Manual)",
         "📊 Overall Merit List & Results (PDF Download)", 
         "📷 Student Photo Upload (Roll No Wise)",
+        "📋 14 Official Activities Calendar",
         "💾 Full Database Backup & Restore"
     ])
 
     st.divider()
     conn = get_db()
 
-    # SECTION 1: QUIZZES
+    # SECTION 1: QUIZZES (Class-Wise Single Live Quiz Rule)
     if admin_tab == "📚 Create & Manage Quizzes (Class 11 & 12 Control)":
         st.subheader("Quiz Schedule & Live Controls")
         with st.expander("➕ Create New Quiz"):
@@ -577,7 +780,6 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
                     if col_b2.button(f"⚡ Start NOW (Instant Sole LIVE)", key=f"now_{r['id']}"):
                         now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
                         now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
-                        # Class-wise rule: Only 1 live per class
                         conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
                         conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
                         conn.commit()
@@ -593,7 +795,7 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
                         st.rerun()
                     st.divider()
 
-    # SECTION 2: MASTER STUDENTS, ATTENDANCE & TEST MARKS (Admin View)
+    # SECTION 2: MASTER STUDENTS, ATTENDANCE & TEST MARKS
     elif admin_tab == "👥 Master Student Directory, Attendance & Tests":
         st.subheader("👥 Master Student Directory, Attendance & Monthly Tests")
         stu_df = pd.read_sql_query("SELECT id, roll_no, student_name, target_class, sr_no, attendance_present, attendance_total, attendance_pct, test_total, test_pct FROM master_students ORDER BY CAST(roll_no AS INTEGER) ASC", conn)
@@ -629,7 +831,68 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
                     time.sleep(1)
                     st.rerun()
 
-    # SECTION 3: QUESTION BANK
+    # SECTION 3: GOOGLE FORM SYNC
+    elif admin_tab == "📥 Google Form Sync (All-in-One Responses)":
+        st.subheader("📥 Google Form Responses File (.xlsx / .csv)")
+        uploaded_form = st.file_uploader("Upload Responses File:", type=["xlsx", "csv"])
+        if uploaded_form and st.button("Sync Responses & Goals", type="primary"):
+            try:
+                df_form = pd.read_csv(uploaded_form, dtype=str) if uploaded_form.name.endswith('.csv') else pd.read_excel(uploaded_form, dtype=str)
+                cols = list(df_form.columns)
+                roll_col = next((col for col in cols if "roll" in col.lower() or "अनुक्रमांक" in col), None)
+                st_col = next((col for col in cols if "अल्पकालिक" in col or "short-term" in col.lower()), None)
+                lt_col = next((col for col in cols if "दीर्घकालिक" in col or "long-term" in col.lower()), None)
+
+                if not roll_col:
+                    st.error("Roll Number column nahi mila!")
+                else:
+                    goals_cnt = 0
+                    acts_cnt = 0
+                    for _, r in df_form.iterrows():
+                        r_no = clean_val(r.get(roll_col, ""))
+                        if not r_no:
+                            continue
+                        st_val = clean_val(r.get(st_col, "")) if st_col else ""
+                        lt_val = clean_val(r.get(lt_col, "")) if lt_col else ""
+
+                        if st_val or lt_val:
+                            conn.execute("""
+                                UPDATE master_students
+                                SET short_term_goal = CASE WHEN ? != '' THEN ? ELSE short_term_goal END,
+                                    long_term_goal  = CASE WHEN ? != '' THEN ? ELSE long_term_goal END
+                                WHERE roll_no = ?
+                            """, (st_val, st_val, lt_val, lt_val, r_no))
+                            goals_cnt += 1
+
+                        for act in DEFAULT_ACTIVITIES:
+                            act_num = str(act["sno"])
+                            desc_c = next((cn for cn in cols if f"[{act_num}." in cn and ("description" in cn.lower() or "कार्य किया" in cn)), None)
+                            refl_c = next((cn for cn in cols if f"[{act_num}." in cn and ("reflection" in cn.lower() or "सीखा" in cn)), None)
+                            link_c = next((cn for cn in cols if f"[{act_num}." in cn and ("link" in cn.lower() or "photo" in cn.lower() or "drive" in cn.lower())), None)
+
+                            d_val = clean_val(r.get(desc_c, "")) if desc_c else ""
+                            rf_val = clean_val(r.get(refl_c, "")) if refl_c else ""
+                            lk_val = clean_val(r.get(link_c, "")) if link_c else ""
+
+                            if d_val or rf_val or lk_val:
+                                d_img = convert_gdrive_link(lk_val)
+                                today_now = datetime.now().strftime("%d-%m-%Y")
+                                conn.execute("""
+                                    INSERT INTO portfolio_entries (
+                                        roll_no, activity_name, category, activity_date,
+                                        student_description, student_reflection, evidence_link,
+                                        marks_awarded, submitted_on
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 5, ?)
+                                """, (r_no, act["name"], act["cat"], act["date"], d_val, rf_val, d_img, today_now))
+                                acts_cnt += 1
+
+                    conn.commit()
+                    st.success(f"Successfully synced: {goals_cnt} goals and {acts_cnt} activity records!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Sync failed: {e}")
+
+    # SECTION 4: QUESTION BANK
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Manage Question Bank")
         if not quizzes_df.empty:
@@ -649,10 +912,10 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
                     ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(r["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
                     cnt += 1
                 conn.commit()
-                st.success(f"{cnt} questions imported!")
+                st.success(f"{cnt} questions imported successfully!")
                 st.rerun()
 
-    # SECTION 4: OVERALL MERIT LIST & RESULTS (PDF Download)
+    # SECTION 5: MERIT LIST (PDF)
     elif admin_tab == "📊 Overall Merit List & Results (PDF Download)":
         st.subheader("Official Merit List (Topper to Lower)")
         if not quizzes_df.empty:
@@ -661,25 +924,6 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
             sel_q_id = quiz_options[sel_q_label]
             
             q_info = dict(conn.execute("SELECT * FROM quizzes WHERE id = ?", (sel_q_id,)).fetchone())
-            
-            # Recalculate Previous Scores
-            try:
-                resp_rows = conn.execute('''
-                    SELECT r.id, r.selected_option, r.correct_option, q.option_a, q.option_b, q.option_c, q.option_d, r.sr_no
-                    FROM student_responses r JOIN questions q ON r.question_id = q.id WHERE r.quiz_id = ?
-                ''', (sel_q_id,)).fetchall()
-                for rr in resp_rows:
-                    is_c = 1 if is_answer_correct(rr['selected_option'], rr['correct_option'], rr['option_a'], rr['option_b'], rr['option_c'], rr['option_d']) else 0
-                    conn.execute("UPDATE student_responses SET is_correct = ? WHERE id = ?", (is_c, rr['id']))
-                conn.execute('''
-                    UPDATE submissions SET score = (
-                        SELECT COALESCE(SUM(is_correct), 0) FROM student_responses 
-                        WHERE student_responses.quiz_id = submissions.quiz_id AND student_responses.sr_no = submissions.sr_no
-                    ) WHERE quiz_id = ?
-                ''', (sel_q_id,))
-                conn.commit()
-            except Exception:
-                pass
             
             subs_df = pd.read_sql_query("SELECT student_name, sr_no, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY score DESC, submitted_at ASC", conn, params=(sel_q_id,))
             
@@ -703,12 +947,12 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
                 with c_p2:
                     st.download_button("📥 Download Results (CSV)", subs_disp.to_csv(index=False).encode('utf-8'), f"results_{sel_q_id}.csv", "text/csv")
 
-    # SECTION 5: STUDENT PHOTO MANAGEMENT
+    # SECTION 6: PHOTO MANAGEMENT
     elif admin_tab == "📷 Student Photo Upload (Roll No Wise)":
         st.subheader("Student Photo Management (Bulk / Single)")
-        st.info("💡 Photo ka filename Roll Number rakhein (e.g. `1.jpg`, `15.png`) taaki wo apne aap match ho jaye.")
+        st.info("💡 Photo ka filename Roll Number rakhein (e.g. `1.jpg`, `15.png`).")
         
-        b_files = st.file_uploader("Select Multiple Student Photos:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+        b_files = st.file_uploader("Select Multiple Photos:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
         if b_files and st.button("Match & Save Photos"):
             matched = 0
             for bf in b_files:
@@ -721,7 +965,14 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
             conn.commit()
             st.success(f"{matched} vidyarthiyon ki photos successfully update ho gayi!")
 
-    # SECTION 6: BACKUP
+    # SECTION 7: CALENDAR
+    elif admin_tab == "📋 14 Official Activities Calendar":
+        st.subheader("📋 कक्षा 12-B आधिकारिक गतिविधि एवं प्रतियोगिता कैलेंडर (UP Board 2026-27)")
+        df_acts = pd.DataFrame(DEFAULT_ACTIVITIES)
+        df_acts.columns = ["क्र. सं.", "तिथि", "प्रतियोगिता / गतिविधि का नाम", "श्रेणी / प्रकार", "विषय / विवरण", "प्रभारी / मूल्यांकनकर्ता"]
+        st.dataframe(df_acts, use_container_width=True)
+
+    # SECTION 8: BACKUP
     elif admin_tab == "💾 Full Database Backup & Restore":
         st.subheader("💾 Full Database Backup")
         stu_exp = pd.read_sql_query("SELECT * FROM master_students", conn)
@@ -729,6 +980,7 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
         ques_exp = pd.read_sql_query("SELECT * FROM questions", conn)
         subs_exp = pd.read_sql_query("SELECT * FROM submissions", conn)
         resp_exp = pd.read_sql_query("SELECT * FROM student_responses", conn)
+        port_exp = pd.read_sql_query("SELECT * FROM portfolio_entries", conn)
         
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -737,13 +989,14 @@ if selected_portal == "⚙️ Teacher / Admin Control Center":
             ques_exp.to_excel(writer, sheet_name='Questions', index=False)
             subs_exp.to_excel(writer, sheet_name='Submissions', index=False)
             resp_exp.to_excel(writer, sheet_name='Responses', index=False)
+            port_exp.to_excel(writer, sheet_name='Portfolio_Entries', index=False)
             
         st.download_button("📥 Download Full Backup (.xlsx)", output.getvalue(), f"Full_Database_Backup_{get_ist_now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     conn.close()
 
 # ==========================================
-# 6. STUDENT INDIVIDUAL PORTAL (RESTRICTED TO SELF)
+# 6. STUDENT INDIVIDUAL PORTAL (Strictly Self)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -756,7 +1009,7 @@ else:
     quizzes_df = get_all_quizzes()
     conn = get_db()
 
-    # Student Login Screen
+    # Student Login Form
     if not st.session_state.student_name:
         st.subheader("🎓 Student Login Portal")
         st.markdown("Pehle apni **Class** chunein, phir apna **Registered Name** aur Password me apna **SR No** darj karein.")
@@ -805,6 +1058,10 @@ else:
     # Strict Privacy: Fetch ONLY this student's data
     s_rec = conn.execute("SELECT * FROM master_students WHERE normalized_name = ?", (student_name.lower(),)).fetchone()
     s_dict = dict(s_rec) if s_rec else {}
+    s_roll = s_dict.get('roll_no', '')
+
+    # Fetch individual portfolio activities
+    entries_df = pd.read_sql_query("SELECT * FROM portfolio_entries WHERE roll_no = ? ORDER BY id ASC", conn, params=(s_roll,)) if s_roll else pd.DataFrame()
 
     # Student Tabs
     stu_tabs = st.tabs([
@@ -907,7 +1164,7 @@ else:
                                 st.rerun()
 
     # -------------------------------------------------------------
-    # TAB 2: MY EXAM SCORECARD & DETAILED ANSWER KEY (Strictly Self)
+    # TAB 2: MY EXAM SCORECARD & ANSWER KEY (Self Only)
     # -------------------------------------------------------------
     with stu_tabs[1]:
         st.subheader("📋 My Physics Exam Responses & Detailed Answer Key")
@@ -940,7 +1197,7 @@ else:
                         """, unsafe_allow_html=True)
 
     # -------------------------------------------------------------
-    # TAB 3: MY ATTENDANCE & UNIT TESTS (Strictly Self)
+    # TAB 3: MY ATTENDANCE & UNIT TESTS (Self Only)
     # -------------------------------------------------------------
     with stu_tabs[2]:
         st.subheader("📅 Official School Attendance & Academic Test Record")
@@ -962,55 +1219,21 @@ else:
         st.markdown(f"**🎯 Long Term Goal:** {s_dict.get('long_term_goal', 'उच्च शिक्षा एवं प्रतियोगी परीक्षाओं में सफलता प्राप्त करना।')}")
 
     # -------------------------------------------------------------
-    # TAB 4: MY UP BOARD PORTFOLIO CARD (View & Download)
+    # TAB 4: MY UP BOARD PORTFOLIO CARD (View & Print Self)
     # -------------------------------------------------------------
     with stu_tabs[3]:
         st.subheader("🎴 2-Page UP Board Student Portfolio Card")
         
-        s_photo = s_dict.get("photo_b64", "")
-        if safe_b64_decode(s_photo):
-            photo_html = f'<img src="data:image/jpeg;base64,{s_photo}" style="width: 95px; height: 115px; object-fit: cover; border-radius: 6px; border: 2px solid #1E3A8A;"/>'
-        else:
-            photo_html = '<div style="font-size: 38px;">🎓</div><div style="font-size: 11px; color: #94A3B8;">फोटो प्रतीक्षित</div>'
-
-        port_html = f"""<!DOCTYPE html>
-        <html>
-        <head><meta charset="utf-8">
-        <style>
-            body {{ font-family: Arial, sans-serif; background: #f8fafc; padding: 10px; color: #1e293b; }}
-            .page {{ max-width: 800px; margin: 0 auto; background: white; border: 2px solid #1E3A8A; border-radius: 8px; padding: 20px; }}
-        </style>
-        </head>
-        <body>
-            <div class="page">
-                <div style="text-align: center; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px; margin-bottom: 15px;">
-                    <h2 style="margin: 0; color: #1E3A8A;">ADITYA BIRLA INTERMEDIATE COLLEGE, RENUKOOT</h2>
-                    <h4 style="margin: 4px 0 0 0; color: #059669;">विद्यार्थी पोर्टफोलियो एवं सतत आंतरिक मूल्यांकन रिकॉर्ड</h4>
-                    <div style="font-size: 12px; color: #475569;">सत्र: 2026 - 2027 | कक्षा: {target_class}</div>
-                </div>
-                <div style="display: flex; gap: 15px;">
-                    <div style="flex: 3; font-size: 13px; line-height: 1.8;">
-                        <b>नाम:</b> {s_dict.get('student_name')}<br>
-                        <b>अनुक्रमांक (Roll No):</b> {s_dict.get('roll_no')}<br>
-                        <b>S.R. No:</b> {s_dict.get('sr_no')}<br>
-                        <b>उपस्थिति (Attendance):</b> {s_dict.get('attendance_present', '72')}/{s_dict.get('attendance_total', '87')} दिन ({s_dict.get('attendance_pct', '82.5')}%)<br>
-                        <b>मासिक टेस्ट प्राप्तांक:</b> {s_dict.get('test_total', '-')}/100 ({s_dict.get('test_pct', '-')})<br>
-                        <b>अल्पकालिक लक्ष्य:</b> {s_dict.get('short_term_goal', 'सत्र में उत्कृष्ट अंक अर्जित करना')}<br>
-                        <b>दीर्घकालिक लक्ष्य:</b> {s_dict.get('long_term_goal', 'उच्च शिक्षा एवं प्रतियोगी परीक्षाओं में सफलता')}
-                    </div>
-                    <div style="flex: 1; text-align: center; border: 1px dashed #CBD5E1; padding: 8px; border-radius: 6px;">
-                        {photo_html}
-                    </div>
-                </div>
-            </div>
-        </body></html>"""
+        portfolio_html = generate_upboard_card(s_dict, entries_df)
         
         st.download_button(
             label="📥 Download My Official Portfolio Card (.html)",
-            data=port_html,
+            data=portfolio_html,
             file_name=f"Portfolio_{s_dict.get('student_name')}.html",
-            mime="text/html"
+            mime="text/html",
+            type="primary"
         )
-        st.components.v1.html(port_html, height=450, scrolling=True)
+        st.caption("💡 Downloaded HTML file ko kisi bhi browser me open karke 'Ctrl + P' dabayein aur Save as PDF karein.")
+        st.components.v1.html(portfolio_html, height=1150, scrolling=True)
 
     conn.close()
